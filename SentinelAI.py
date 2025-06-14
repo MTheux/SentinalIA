@@ -11,6 +11,7 @@ import json
 from urllib.parse import urlparse
 import streamlit.components.v1 as components
 import yaml
+# import csv # Removido, pois não usaremos arquivos CSV locais
 
 
 # --- Configurações do LLM (Temperatura Reduzida para Consistência) ---
@@ -19,6 +20,9 @@ LLM_TEMPERATURE = 0.1
 # --- Configuração do LLM (API Key) ---
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_API_KEY")
+NVD_API_KEY = os.getenv("NVD_API_KEY") # Carrega a NVD API Key
+ACUNETIX_API_KEY = os.getenv("ACUNETIX_API_KEY") # Adicionado para carregar a Acunetix API Key
+ACUNETIX_URL = os.getenv("ACUNETIX_URL") # Adicionado para carregar a URL do Acunetix
 
 if not API_KEY:
     st.error("ERRO: A variável de ambiente 'GOOGLE_API_KEY' não está configurada.")
@@ -319,6 +323,8 @@ def home_page():
         - **PoC Generator (HTML)**: Gere PoCs HTML para vulnerabilidades específicas.
         - **OpenAPI Analyzer**: Analise especificações de API em busca de falhas de segurança e melhorias de design.
         - **Static Code Analyzer**: Cole trechos de código para análise básica de segurança e busca por informações sensíveis.
+        - **Search Exploit (NVD)**: Pesquise por CVEs e possíveis PoCs usando a API da NVD.
+        - **Acunetix Scanner Insights**: Analise o output do Acunetix para insights e PoCs.
     """)
     st.info("Para começar, selecione uma das opções de análise na barra lateral.")
 
@@ -353,7 +359,7 @@ def modelagem_de_ameacas_page(llm_model_vision, llm_model_text):
 
     if uploaded_diagram_file is not None:
         try:
-            diagram_bytes = uploaded_file.getvalue()
+            diagram_bytes = uploaded_diagram_file.getvalue() # Corrigido para uploaded_diagram_file
             diagram_img = Image.open(BytesIO(diagram_bytes))
             diagram_preview_placeholder.image(diagram_img, caption="Pré-visualização do Diagrama", use_container_width=True)
             st.session_state.stride_image_uploaded = diagram_img
@@ -454,15 +460,15 @@ def owasp_scout_visual_page(llm_model_vision, llm_model_text):
 
     if uploaded_file is not None:
         try:
-            diagram_bytes = uploaded_file.getvalue()
-            img = Image.open(BytesIO(diagram_bytes))
+            img_bytes = uploaded_file.getvalue()
+            img = Image.open(BytesIO(img_bytes))
             image_preview_placeholder.image(img, caption="Pré-visualização da Imagem", use_container_width=True)
             st.session_state.owasp_image_uploaded = img
         except Exception as e:
             st.error(f"Erro ao carregar a imagem: {e}")
             st.session_state.owasp_image_uploaded = None
     elif st.session_state.owasp_image_uploaded:
-        diagram_preview_placeholder.image(st.session_state.owasp_image_uploaded, caption="Pré-visualização da Imagem", use_container_width=True)
+        image_preview_placeholder.image(st.session_state.owasp_image_uploaded, caption="Pré-visualização da Imagem", use_container_width=True)
     else:
         st.session_state.owasp_image_uploaded = None
 
@@ -499,20 +505,22 @@ def owasp_scout_visual_page(llm_model_vision, llm_model_text):
                     f"\nUma breve explicação do que é a vulnerabilidade, como ela ocorre e os cenários comuns de impacto, **especificamente como se relaciona à imagem ou ao contexto.**"
                     f"\n\n## 2. Categoria OWASP (2021)"
                     f"\nIndique o CÓDIGO e o NOME da categoria da OWASP Top 10 (2021) à qual esta vulnerabilidade pertence (ex: A03: Injection). Use a lista: {', '.join([f'{c}: {n}' for c, n in OWASP_TOP_10_2021.items()])}. Se for uma subcategoria, mencione-la também."
-                    f"\n\n## 3. Técnicas de Exploração"
-                    f"\nMétodos comuns e abordagens para testar e explorar esta vulnerabilidade."
-                    f"\n\n## 4. Severidade" # NOVO: CAMPO DE SEVERIDADE
+                    f"\n\n## 3. Técnicas de Exploração Detalhadas"
+                    f"\nDescreva passo a passo os métodos comuns e abordagens para testar e explorar esta vulnerabilidade, focando em como a imagem pode estar relacionada. Seja didático e prático.\n"
+                    f"\n\n## 4. Ferramentas Sugeridas"
+                    f"\nListe as ferramentas de segurança e pentest (ex: Burp Suite, Nmap, SQLmap, XSSer, Nessus, Nikto, Metasploit, etc.) que seriam úteis para descobrir e explorar esta vulnerabilidade, explicando brevemente como cada uma se aplicaria.\n"
+                    f"\n\n## 5. Severidade"
                     f"\nClassifique a severidade desta vulnerabilidade: [Crítica/Alta/Média/Baixa].\n"
-                    f"\n\n## 5. Dicas de Exploração / Próximos Passos" # NOVO: DICAS DE EXPLORAÇÃO
-                    f"\nCom base na falha identificada e no contexto da imagem, forneça dicas práticas e os próximos passos que um pentester faria para explorar ou confirmar a falha. Seja acionável.\n"
+                    f"\n\n## 6. Dicas de Exploração / Próximos Passos Práticos"
+                    f"\nCom base na falha identificada e no contexto da imagem, forneça dicas práticas e os próximos passos que um pentester faria para explorar ou confirmar a falha. Inclua instruções sobre como usar as ferramentas sugeridas e payloads de teste, se aplicável. Seja acionável.\n"
                 ]
                 
                 if st.session_state.owasp_consider_waf_state:
-                    prompt_parts.append(f"\n\n## 6. Dicas de Bypass de WAF")
+                    prompt_parts.append(f"\n\n## 7. Dicas de Bypass de WAF")
                     prompt_parts.append(f"\nForneça estratégias, técnicas e exemplos práticos (se aplicável à vulnerabilidade) para contornar ou evadir a detecção de um Web Application Firewall (WAF) ao tentar explorar esta falha. Inclua exemplos de payloads ou modificações de requisições que podem ajudar a testar o presença ou bypass do WAF.")
-                    poc_section_num = 7
+                    poc_section_num = 8
                 else:
-                    poc_section_num = 6
+                    poc_section_num = 7
                     
                 prompt_parts.append(f"\n\n## {poc_section_num}. Prova de Conceito (PoC)")
                 prompt_parts.append(f"\nForneça **exemplos práticos de comandos de terminal, requisições HTTP (com `curl` ou similar), ou payloads de código (Python, JS, etc.)** que demonstrem a exploração. Esses exemplos devem ser claros, prontos para uso (com pequenas adaptações) e encapsulados em blocos de código Markdown (` ``` `). Relacione o PoC à imagem ou contexto, se possível.")
@@ -531,7 +539,7 @@ def owasp_scout_visual_page(llm_model_vision, llm_model_text):
 
     # Exibe o resultado da análise (se houver)
     if st.session_state.owasp_analysis_result:
-        st.subheader("Results da Análise Visual") # Corrigido subtítulo
+        st.subheader("Resultados da Análise Visual") # Corrigido subtítulo
         st.markdown(st.session_state.owasp_analysis_result)
 
 def owasp_text_analysis_page(llm_model_vision, llm_model_text):
@@ -720,45 +728,61 @@ def http_request_analysis_page(llm_model_vision, llm_model_text):
             st.error("Por favor, cole a requisição HTTP RAW para análise.")
         else:
             with st.spinner("Analisando a requisição HTTP com LLM..."):
-                request_lines = st.session_state.http_request_input_raw.split('\n')
-                request_line_from_raw = request_lines[0].strip() if request_lines else ""
-                headers_raw = "\n".join([line for line in request_lines[1:] if ":" in line])
-                body_raw = "\n".join([line for line in request_lines if not line.strip() and request_lines.index(line) > 0 and request_lines[request_lines.index(line)-1].strip() == ""]).strip()
-
+                # Parse da requisição RAW para extrair componentes (já existe e funciona bem)
+                parsed_request = parse_raw_http_request(st.session_state.http_request_input_raw)
+                
+                # Adaptação para o prompt, garantindo que mesmo se o parse não for perfeito, o LLM ainda veja o RAW completo
+                request_method_path_version = f"{parsed_request['method']} {parsed_request['path']} HTTP/1.1" if parsed_request['method'] and parsed_request['path'] else "Não detectado"
+                headers_formatted = "\n".join([f"{k}: {v}" for k, v in parsed_request['headers'].items()])
+                body_content = parsed_request['body']
 
                 prompt_base = (
-                    f"Você é um especialista em segurança da informação e pentest. Analise a requisição HTTP RAW fornecida e a URL alvo. Identifique **TODAS as possíveis falhas de segurança OWASP Top 10 (2021) aplicáveis**, sendo extremamente detalhado e preciso na análise de cada parte da requisição. Inclua, mas não se limite a:\n"
+                    f"Você é um especialista em segurança da informação e pentest. Analise a requisição HTTP RAW fornecida e a URL alvo. Identifique **TODAS as possíveis falhas de segurança OWASP Top 10 (2021) e outras vulnerabilidades relevantes aplicáveis**, sendo extremamente detalhado e preciso na análise de cada parte da requisição. Inclua:\n"
                     f"\n**RESUMO:** Forneça um resumo quantitativo na PRIMEIRA LINHA da sua resposta, no formato exato: `Total de Vulnerabilidades: X | Críticas: Y | Altas: Z | Médias: W | Baixas: V` (substitua X,Y,Z,W,V pelos números correspondentes). Se não houver vulnerabilidades, use 0.\n\n"
                     f"Para cada **falha potencial** identificado, apresente de forma concisa e prática:\n\n"
-                    f"1.  **Tipo da Falha e Categoria OWASP (2021):** Ex: `Injeção SQL (A03: Injection)`.\n"
-                    f"2.  **Detalhes e Impacto:** Breve descrição da falha e como ela pode ser explorada nesta requisição específica.\n"
+                    f"1.  **Tipo da Falha e Categoria OWASP (2021):** Ex: `Injeção SQL (A03: Injection)` ou `Exposição de Cookie Sensível`.\n"
+                    f"2.  **Detalhes e Impacto:** Breve descrição da falha e como ela pode ser explorada nesta requisição específica, mencionando qual parte da requisição (linha, cabeçalho, corpo) está envolvida.\n"
                     f"3.  **Severidade:** [Crítica/Alta/Média/Baixa]\n"
-                    f"4.  **Prova de Conceito (PoC) - REQUISIÇÃO HTTP RAW COMPLETA MODIFICADA:** Forneça **A REQUISIÇÃO HTTP RAW COMPLETA MODIFICADA** que demonstre a exploração da falha. Esta requisição RAW deve ser pronta para ser copiada e colada em um proxy (como Burp Suite Repeater) ou enviada via `netcat`. Encapsule a requisição RAW completa em um bloco de código Markdown com la linguagem `http` (` ```http `).\n"
+                    f"4.  **Prova de Conceito (PoC) - REQUISIÇÃO HTTP RAW COMPLETA MODIFICADA:** Forneça **A REQUISIÇÃO HTTP RAW COMPLETA MODIFICADA** que demonstre a exploração da falha. Esta requisição RAW deve ser pronta para ser copiada e colada em um proxy (como Burp Suite Repeater) ou enviada via `netcat`. Encapsule a requisição RAW completa em um bloco de código Markdown com a linguagem `http` (` ```http `). Certifique-se de que a PoC é funcional e reflete a exploração da vulnerabilidade.\n"
+                    f"5.  **Ferramentas Sugeridas:** Liste ferramentas de segurança e pentest (ex: Burp Suite, Nmap, SQLmap, XSSer, Nessus, Nikto, Metasploit, dirbuster, ffuf, ZAP, etc.) que seriam úteis para descobrir e explorar esta vulnerabilidade, explicando brevemente como cada uma se aplicaria.\n"
                 )
 
                 if st.session_state.http_request_consider_waf_state:
-                    prompt_base += f"\n\n5.  **Dicas de Bypass de WAF:** Se a requisição tiver um WAF, inclua estratégias e exemplos de bypass nos PoCs (na própria requisição RAW modificada, se possível), se aplicável.\n"
+                    # Seção de WAF fica após os pontos gerais e antes da análise segmentada
+                    prompt_base += f"\n\n6.  **Dicas de Bypass de WAF:** Se a requisição tiver um WAF, inclua estratégias e exemplos de bypass nos PoCs (na própria requisição RAW modificada, se possível), se aplicável. Inclua técnicas como obfuscação, codificação alternativa, uso de múltiplos headers, etc.\n"
                 
-                # Análise segmentada
-                prompt_base += f"\n\n--- Análise Segmentada da Requisição ---\n"
+                prompt_base += f"\n\n--- Análise Segmentada Detalhada da Requisição ---\n"
                 prompt_base += f"**URL Alvo Fornecida:** `{st.session_state.http_request_input_url}`\n"
-                prompt_base += f"**Requisição RAW Original:**\n```http\n{st.session_state.http_request_input_raw}\n```\n"
+                prompt_base += f"**Requisição RAW Original Completa:**\n```http\n{st.session_state.http_request_input_raw}\n```\n"
 
-                prompt_base += f"\n### 1. Análise da Linha de Requisição (Método, Path, Parâmetros):\n"
-                prompt_base += f"Foque em possíveis injeções (SQLi, XSS, Command, Path Traversal) em parâmetros de URL, verbos HTTP inadequados, ou exposição de informações no path.\n"
-                prompt_base += f"Linha: `{request_line_from_raw}`\n"
+                prompt_base += f"\n### 1. Análise da Linha de Requisição (`{request_method_path_version}`):\n"
+                prompt_base += f"Foque em:\n"
+                prompt_base += f"- Possíveis injeções (SQLi, XSS, Command, Path Traversal) em parâmetros de URL.\n"
+                prompt_base += f"- Verbos HTTP inadequados ou métodos não permitidos.\n"
+                prompt_base += f"- Exposição de informações sensíveis no path ou em parâmetros de query.\n"
+                f"- Falhas relacionadas à versão HTTP (ex: `HTTP/1.1`) como HTTP Request Smuggling (Desync). Analise a possibilidade de adicionar `Transfer-Encoding: chunked` para tentar desync. \n"
                 
-                prompt_base += f"\n### 2. Análise dos Cabeçalhos HTTP:\n"
-                prompt_base += f"Foque em falhas de segurança como CSRF, cabeçalhos de segurança ausentes/incorretos (HSTS, CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, etc.), manipulação de cookies, problemas de cache, bypass de controle de acesso via cabeçalhos, etc.\n"
-                prompt_base += f"Cabeçalhos:\n```\n{headers_raw}\n```\n"
-
-                prompt_base += f"\n### 3. Análise do Corpo da Requisição:\n"
-                prompt_base += f"Foque em injeções (SQLi, XSS, Command, NoSQL, XML, JSON), desserialização insegura, upload de arquivos maliciosos, bypass de validação de input, etc.\n"
-                prompt_base += f"Corpo:\n```\n{body_raw}\n```\n"
+                prompt_base += f"\n### 2. Análise dos Cabeçalhos HTTP (`{headers_formatted}`):\n"
+                prompt_base += f"Foque em:\n"
+                f"- Falhas de segurança como CSRF (verificar `Origin`, `Referer`), Clickjacking (`X-Frame-Options`).\n"
+                f"- Cabeçalhos de segurança ausentes ou incorretos (HSTS, CSP, X-Content-Type-Options, Referrer-Policy, etc.).\n"
+                f"- Manipulação de cookies: Verifique atributos de segurança (HTTPOnly, Secure, SameSite, `Max-Age`/`Expires` para cookies de sessão). **Importante: Analise o valor dos cookies (ex: `wordpress_test_cookie=WP%20Cookie%20check`). Se houver valores como JWT, MD5, ou outros hashes/tokens, mencione a possível exposição ou vulnerabilidade.**\n"
+                f"- Problemas de cache (Cache Poisoning).\n"
+                f"- Bypass de controle de acesso via cabeçalhos (ex: `X-Forwarded-For`, `X-Original-URL`).\n"
+                f"- Host Header Injection.\n"
+                f"- Falhas de CORS (Cross-Origin Resource Sharing) em cabeçalhos como `Origin`, `Access-Control-Allow-Origin`.\n"
+                f"- Exposição de informações no `User-Agent` ou `Referer`.\n"
+                
+                prompt_base += f"\n### 3. Análise do Corpo da Requisição (`{body_content}`):\n"
+                prompt_base += f"Foque em:\n"
+                f"- Injeções (SQLi, XSS, Command, NoSQL, XML, JSON) em dados enviados.\n"
+                f"- Desserialização insegura (se o corpo contiver dados serializados).\n"
+                f"- Vulnerabilidades em upload de arquivos (se for um request de upload).\n"
+                f"- Bypass de validação de input ou lógica de negócio.\n"
 
                 prompt_base += (
-                    f"\nSe a requisição não contiver vulnerabilidades óbvias que possam ser exploradas directamente, indique isso de forma clara e sugira o que mais o pentester poderia investigar com base nesta requisição (ex: outras rotas, enumeração de diretórios, análise de cookies de sessão, análise de respostas para informações sensíveis, fuzzing de parâmetros, etc.).\n\n"
-                    f"Sua resposta deve ser direta, útil e focada em ações e informações completas para um pentester, apresentando cada falha identificada com seus detalhes e PoC completos."
+                    f"\nSe a requisição não contiver vulnerabilidades óbvias que possam ser exploradas directamente, indique isso de forma clara e sugira o que mais o pentester poderia investigar com base nesta requisição (ex: outras rotas, enumeração de diretórios, análise de respostas para informações sensíveis, fuzzing de parâmetros, análise de erros, etc.).\n\n"
+                    f"Sua resposta deve ser direta, útil e focada em ações e informações completas para um pentester, apresentando cada falha identificada com seus detalhes, ferramentas e PoC completos."
                 )
                 
                 analysis_result_raw = obter_resposta_llm(llm_model_text, [prompt_base])
@@ -891,7 +915,7 @@ def pentest_lab_page(llm_model_vision, llm_model_text):
             components.html(st.session_state.lab_html_poc, height=300, scrolling=True)
             st.markdown("---")
 
-        if st.session_state.lab_payload_example:
+        if st.session_state.lab_payload_example: # Corrigido para poc_gen_payload_example
             st.markdown("#### Exemplo de Payload/Comando para Teste")
             payload_lang = "plaintext"
             first_line = st.session_state.lab_payload_example.splitlines()[0].strip() if st.session_state.lab_payload_example else ""
@@ -902,7 +926,7 @@ def pentest_lab_page(llm_model_vision, llm_model_text):
                 payload_lang = "sql"
             elif "http" in first_line.lower() and ("post" in first_line.lower() or "get" in first_line.lower()):
                 payload_lang = "http"
-            elif "curl " in st.session_state.lab_payload_example.lower() or "bash" in first_line.lower():
+            elif "curl " in first_line.lower() or "bash" in first_line.lower():
                 payload_lang = "bash"
             elif "python" in first_line.lower() or "import" in st.session_state.lab_payload_example.lower():
                 payload_lang = "python"
@@ -1022,7 +1046,7 @@ def poc_generator_html_page(llm_model_vision, llm_model_text):
             components.html(st.session_state.poc_gen_html_output, height=300, scrolling=True)
             st.markdown("---")
 
-        if st.session_state.poc_gen_payload_example:
+        if st.session_state.poc_gen_payload_example: # Corrigido para poc_gen_payload_example
             st.markdown("#### Exemplo de Payload/Comando para Teste")
             payload_lang = "plaintext"
             first_line = st.session_state.poc_gen_payload_example.splitlines()[0].strip() if st.session_state.poc_gen_payload_example else ""
@@ -1033,7 +1057,7 @@ def poc_generator_html_page(llm_model_vision, llm_model_text):
                 payload_lang = "sql"
             elif "http" in first_line.lower() and ("post" in first_line.lower() or "get" in first_line.lower()):
                 payload_lang = "http"
-            elif "curl " in st.session_state.poc_gen_payload_example.lower() or "bash" in first_line.lower():
+            elif "curl " in first_line.lower() or "bash" in first_line.lower():
                 payload_lang = "bash"
             elif "python" in first_line.lower() or "import" in st.session_state.poc_gen_payload_example.lower():
                 payload_lang = "python"
@@ -1095,18 +1119,23 @@ def static_code_analyzer_page(llm_model_vision, llm_model_text):
             with st.spinner(f"Analisando código {st.session_state.code_language_selected} com LLM..."):
                 code_prompt = (
                     f"Você é um especialista em segurança de código e pentest. Analise o trecho de código fornecido na linguagem {st.session_state.code_language_selected}. "
-                    f"Seu objetivo é identificar **TODAS as potenciais vulnerabilidades de segurança** (baseadas na OWASP Top 10 e outras falhas comuns) e **exposição de informações sensíveis** (chaves de API, credenciais, IPs, URLs internas/desenvolvimento, comentários problemáticos).\n\n"
+                    f"Seu objetivo é identificar **TODAS as potenciais vulnerabilidades de segurança** (baseadas na OWASP Top 10 e outras falhas comuns) e **exposição de informações sensíveis**, tais como:\n"
+                    f"- Chaves de API, chaves secretas ou tokens (ex: `API_KEY`, `secret_key`, `token`, `password`)\n"
+                    f"- Endereços IP de servidores ou URLs internas/de desenvolvimento (ex: `192.168.1.1`, `dev.api.internal`, `test.database.com`)\n"
+                    f"- Comentários de desenvolvedores que possam conter informações sensíveis (ex: `TODO: remover esta senha`, `FIXME: credenciais hardcoded aqui`, `username: admin / password: 123`)\n"
+                    f"- Nomes de diretórios ou caminhos de arquivos internos/sensíveis (ex: `/var/www/backup`, `/admin/dev_tools`, `C:\\secrets\\config.ini`)\n\n"
                     f"**Código para análise:**\n```\n{st.session_state.code_input_content}\n```\n\n"
                     f"Para cada **achado (vulnerabilidade ou informação sensível)** identificado, apresente de forma concisa e prática, utilizando Markdown:\n\n"
-                    f"## [Tipo de Achado (Ex: Injeção SQL, Chave de API Exposta)]\n"
-                    f"**Categoria OWASP (se aplicável):** [Ex: A03: Injection, A05: Security Misconfiguration]\n"
-                    f"**Severidade/Risco:** [Crítica/Alta/Média/Baixa - explique o impacto deste achado específico]\n"
+                    f"## [Tipo de Achado (Ex: Injeção SQL, Chave de API Exposta, Credenciais em Comentário)]\n"
+                    f"**Categoria OWASP (se aplicável):** [Ex: A03: Injection, A05: Security Misconfiguration]. Se for uma informação sensível não OWASP, indique 'Exposição de Informação'.\n"
+                    f"**Severidade/Risco:** [Crítica/Alta/Média/Baixa - explique o impacto deste achado específico, tanto para vulnerabilidades quanto para informações expostas]\n"
                     f"**Detalhes no Código:** Explique onde no código a falha/informação foi observada. Inclua o **número da linha aproximado** se possível. Ex: `Linha 5: O parâmetro 'username' é usado diretamente em uma query SQL.`\n"
-                    f"**Trecho de Código Afetado:** Forneça o trecho de código exato que contém a falha ou informação sensível. Encapsule-o em um bloco de código Markdown com la linguagem correspondente (ex: ```python, ```javascript, ```java). Este trecho deve ser facilmente identificável no código original.\n\n" # NOVO: Trecho de Código Afetado
-                    f"**Exemplo de PoC/Cenário de Exploração (se aplicável):** Descreva os passos para explorar a vulnerabilidade ou o risco de exposição da informação. Forneça exemplos de payloads, comandos ou trechos de código que demonstrem o problema.\n"
+                    f"**Trecho de Código Afetado:** Forneça o trecho de código exato que contém a falha ou informação sensível. Encapsule-o em um bloco de código Markdown com a linguagem correspondente (ex: ```python, ```javascript, ```java). Este trecho deve ser facilmente identificável no código original.\n\n"
+                    f"**Exemplo de PoC/Cenário de Exploração (se aplicável):** Descreva os passos para explorar a vulnerabilidade ou o risco de exposição da informação. Forneça exemplos de payloads, comandos ou trechos de código que demonstrem o problema. Para informações sensíveis, explique como essa exposição pode ser explorada (ex: acesso a sistemas, reconhecimento, pivotagem).\n"
                     f"Encapsule os exemplos de código em blocos de código Markdown (` ```{st.session_state.code_language_selected} ` ou ` ```bash `).\n\n"
-                    f"**Recomendação/Mitigação:** Ações concretas para corrigir o problema ou mitigar o risco (ex: usar prepared statements, sanitizar input, remover hardcoded secrets).\n\n"
-                    f"Se não encontrar vulnerabilidades óbvias ou informações sensíveis, indique isso claramente. Lembre-se, sua análise é uma *primeira linha* e não substitui um SAST completo.\n\n"
+                    f"**Ferramentas Sugeridas (se aplicável):** Liste ferramentas que podem ser usadas para explorar ou validar este achado. (Ex: `grep` para buscas de strings, `curl` para testar URLs, `nuclei` para templates, Burp Suite, etc.).\n\n"
+                    f"**Recomendação/Mitigação:** Ações concretas para corrigir o problema ou mitigar o risco (ex: usar prepared statements, sanitizar input, remover hardcoded secrets, usar variáveis de ambiente, configurar permissões adequadas).\n\n"
+                    f"Se não encontrar vulnerabilidades óbvias ou informações sensíveis, indique isso claramente. Lembre-se, sua análise é uma *primeira linha* e não substitui um SAST completo ou uma revisão de código manual profunda.\n\n"
                 )
 
                 code_analysis_result_raw = obter_resposta_llm(llm_model_text, [code_prompt])
@@ -1120,6 +1149,469 @@ def static_code_analyzer_page(llm_model_vision, llm_model_text):
         st.subheader("Results da Análise de Código") # Corrigido subtítulo
         st.markdown(st.session_state.code_analysis_result)
 
+
+# --- Nova Página: OpenAPI Analyzer ---
+def swagger_openapi_analyzer_page(llm_model_vision, llm_model_text):
+    st.header("OpenAPI Analyzer: Análise de APIs (Swagger/OpenAPI) 📄")
+    st.markdown("""
+        Cole o conteúdo de um arquivo OpenAPI (JSON ou YAML) para analisar a especificação da API em busca de:
+        - **Vulnerabilidades OWASP API Security Top 10 (2023)**
+        - Falhas de design e implementação
+        - Exposição de informações sensíveis
+        - Boas práticas de segurança e sugestões de melhoria.
+    """)
+
+    # Inicializa ou reseta o estado
+    if 'swagger_input_content' not in st.session_state:
+        st.session_state.swagger_input_content = ""
+    if 'swagger_analysis_result' not in st.session_state:
+        st.session_state.swagger_analysis_result = [] # Armazena uma lista de objetos (dicionários) se necessário
+    if 'swagger_analysis_result_display' not in st.session_state:
+        st.session_state.swagger_analysis_result_display = "" # Resultado processado para display
+    if 'swagger_context_input' not in st.session_state:
+        st.session_state.swagger_context_input = ""
+    if 'swagger_summary' not in st.session_state:
+        st.session_state.swagger_summary = None
+
+    def reset_swagger_analyzer():
+        st.session_state.swagger_input_content = ""
+        st.session_state.swagger_analysis_result = []
+        st.session_state.swagger_analysis_result_display = ""
+        st.session_state.swagger_context_input = ""
+        st.session_state.swagger_summary = None
+        st.rerun()
+
+    if st.button("Limpar Análise OpenAPI", key="reset_swagger_analysis_button"):
+        reset_swagger_analyzer()
+
+    # Campo para colar o conteúdo OpenAPI
+    swagger_content = st.text_area(
+        "Cole o conteúdo do arquivo OpenAPI (JSON ou YAML) aqui:",
+        value=st.session_state.swagger_input_content,
+        placeholder="Ex: { 'openapi': '3.0.0', 'info': { ... }, 'paths': { ... } }",
+        height=400,
+        key="swagger_input_area"
+    )
+    st.session_state.swagger_input_content = swagger_content.strip()
+
+    context_input = st.text_area(
+        "Forneça um contexto adicional sobre a API (opcional):",
+        value=st.session_state.swagger_context_input,
+        placeholder="Ex: 'Esta API é para gerenciamento de usuários', 'É uma API interna para microserviços'",
+        key="swagger_context_input_area"
+    )
+    st.session_state.swagger_context_input = context_input.strip()
+
+    if st.button("Analisar OpenAPI", key="analyze_swagger_button"):
+        if not st.session_state.swagger_input_content:
+            st.error("Por favor, cole o conteúdo OpenAPI/Swagger para análise.")
+        else:
+            with st.spinner("Analisando especificação OpenAPI/Swagger..."):
+                # Tenta detectar se é JSON ou YAML para melhor formatação no prompt
+                try:
+                    json.loads(st.session_state.swagger_input_content)
+                    content_format = "JSON"
+                    code_lang = "json"
+                except json.JSONDecodeError:
+                    try:
+                        yaml.safe_load(st.session_state.swagger_input_content)
+                        content_format = "YAML"
+                        code_lang = "yaml"
+                    except yaml.YAMLError:
+                        content_format = "TEXTO SIMPLES (formato inválido, análise pode ser limitada)"
+                        code_lang = "plaintext"
+                        st.warning("O conteúdo colado não parece ser um JSON ou YAML válido. A análise pode ser limitada.")
+
+                swagger_prompt = (
+                    f"Você é um especialista em segurança de APIs e pentest, com profundo conhecimento na OWASP API Security Top 10 (2023).\n"
+                    f"Sua tarefa é analisar a especificação OpenAPI (Swagger) fornecida ({content_format}) e o contexto adicional, identificando **TODAS as possíveis vulnerabilidades de segurança e falhas de design**.\n"
+                    f"\n**RESUMO:** Forneça um resumo quantitativo na PRIMEIRA LINHA da sua resposta, no formato exato: `Total de Vulnerabilidades API: X | Críticas: Y | Altas: Z | Médias: W | Baixas: V` (substitua X,Y,Z,W,V pelos números correspondentes). Se não houver vulnerabilidades, use 0.\n\n"
+                    f"Para cada **vulnerabilidade ou falha de design** identificada, apresente de forma concisa e prática, utilizando formato Markdown para títulos e blocos de código:\n\n"
+                    f"## [Nome da Vulnerabilidade/Falha de Design]\n"
+                    f"**Categoria OWASP API Security Top 10 (2023):** [Ex: API1: Broken Object Level Authorization (BOLA), API8: Security Misconfiguration]. Se não se encaixar diretamente, use 'Falha de Design Geral'.\n"
+                    f"**Severidade/Risco:** [Crítica/Alta/Média/Baixa - explique o impacto específico para esta API]\n"
+                    f"**Localização na Especificação:** Indique o caminho exato ou uma descrição clara de onde a falha foi observada na especificação OpenAPI (ex: `/paths/{userId}/details GET`, `components/schemas/UserObject`).\n"
+                    f"**Detalhes e Explicação:** Explique brevemente a falha, como ela se manifesta nesta especificação e o impacto potencial.\n"
+                    f"**Exemplo de Cenário de Ataque/PoC (se aplicável):** Descreva um cenário de ataque que explore essa vulnerabilidade, ou um exemplo de requisição HTTP (com `curl` ou similar) que demonstre o problema. Encapsule em um bloco de código Markdown com linguagem `http` ou `bash` (` ```http `, ` ```bash `).\n"
+                    f"**Ferramentas Sugeridas:** Liste ferramentas que podem ser usadas para testar ou validar este achado (ex: Postman, Burp Suite, OWASP ZAP, Kiterunner, FFUF, OpenAPI-fuzzer, Dastardly, etc.).\n"
+                    f"**Recomendação/Mitigação:** Ações concretas e específicas para corrigir a vulnerabilidade ou melhorar o design da API, relevantes para a especificação OpenAPI fornecida (ex: adicionar autenticação/autorização, aplicar validação de esquema, limitar taxas).\n\n"
+                    f"**Conteúdo da Especificação OpenAPI/Swagger (para sua referência):\n"
+                    f"```" + code_lang + f"\n{st.session_state.swagger_input_content}\n```\n\n"
+                    f"**Contexto Adicional:** {st.session_state.swagger_context_input if st.session_state.swagger_context_input else 'Nenhum contexto adicional fornecido.'}\n\n"
+                    f"Se não encontrar vulnerabilidades ou falhas de design óbvias, indique isso claramente e sugira melhorias gerais de segurança para a API.\n"
+                    f"Sua resposta deve ser direta, útil e focada em ações e informações completas para um pentester ou desenvolvedor."
+                )
+                
+                analysis_result_raw = obter_resposta_llm(llm_model_text, [swagger_prompt])
+                
+                if analysis_result_raw:
+                    st.session_state.swagger_summary, st.session_state.swagger_analysis_result_display = parse_vulnerability_summary(analysis_result_raw)
+                else:
+                    st.session_state.swagger_analysis_result_display = "Não foi possível obter a análise da especificação OpenAPI. Tente novamente."
+                    st.session_state.swagger_summary = None
+
+    if st.session_state.swagger_analysis_result_display:
+        st.subheader("Resultados da Análise OpenAPI")
+        if st.session_state.swagger_summary:
+            st.markdown("#### Resumo das Vulnerabilidades API Identificadas:")
+            cols = st.columns(5)
+            cols[0].metric("Total", st.session_state.swagger_summary["Total"])
+            cols[1].metric("Críticas", st.session_state.swagger_summary["Críticas"])
+            cols[2].metric("Altas", st.session_state.swagger_summary["Altas"])
+            cols[3].metric("Médias", st.session_state.swagger_summary["Médias"])
+            cols[4].metric("Baixas", st.session_state.swagger_summary["Baixas"])
+            st.markdown("---")
+        st.markdown(st.session_state.swagger_analysis_result_display)
+
+
+def search_exploit_page(llm_model_vision, llm_model_text):
+    st.header("Search Exploit (NVD): Busca por CVEs e PoCs 🔍") # Título mais claro
+    st.markdown("""
+        Digite o nome de um software/serviço e sua versão. O SentinelAI irá pesquisar
+        por CVEs (Common Vulnerabilities and Exposures) e possíveis Provas de Conceito (PoCs),
+        consultando a base de dados oficial da NVD (National Vulnerability Database).
+    """)
+
+    st.info("ℹ️ **Informação:** Esta ferramenta consulta a API oficial da NVD (National Vulnerability Database) para obter as CVEs mais recentes. As informações de PoC e ferramentas são geradas pelo modelo de IA com base nas CVEs encontradas e em seu conhecimento de segurança.")
+    st.warning("⚠️ **Atenção sobre o erro de conexão:** Se você estiver recebendo o erro 'No connection adapters were found', verifique sua conexão com a internet e se há algum proxy ou configuração de certificado SSL/TLS que possa estar impedindo as requisições Python. A NVD API requer acesso HTTPS padrão.")
+
+
+    # Inicializa ou reseta o estado
+    if 'exploit_software_name' not in st.session_state:
+        st.session_state.exploit_software_name = ""
+    if 'exploit_software_version' not in st.session_state:
+        st.session_state.exploit_software_version = ""
+    if 'exploit_analysis_result' not in st.session_state:
+        st.session_state.exploit_analysis_result = ""
+    if 'exploit_summary' not in st.session_state:
+        st.session_state.exploit_summary = None
+    if 'nvd_search_results' not in st.session_state:
+        st.session_state.nvd_search_results = []
+
+    def reset_exploit_search():
+        st.session_state.exploit_software_name = ""
+        st.session_state.exploit_software_version = ""
+        st.session_state.exploit_analysis_result = ""
+        st.session_state.exploit_summary = None
+        st.session_state.nvd_search_results = []
+        st.rerun()
+
+    if st.button("Limpar Busca", key="reset_exploit_search_button"):
+        reset_exploit_search()
+
+    # Campos de entrada
+    software_name = st.text_input(
+        "Nome do Software/Serviço (Ex: Apache HTTP Server, MySQL, OpenSSL):",
+        value=st.session_state.exploit_software_name,
+        placeholder="Ex: Apache HTTP Server",
+        key="exploit_software_name_input"
+    )
+    st.session_state.exploit_software_name = software_name.strip()
+
+    software_version = st.text_input(
+        "Versão (Opcional, para refinar a busca. Ex: 2.4.50, 8.0.30):",
+        value=st.session_state.exploit_software_version,
+        placeholder="Ex: 2.4.50 ou 8.0.30",
+        key="exploit_software_version_input"
+    )
+    st.session_state.exploit_software_version = software_version.strip()
+
+    # Define version_text aqui, para que esteja sempre disponível
+    version_text = f" versão '{st.session_state.exploit_software_version}'" if st.session_state.exploit_software_version else ""
+
+
+    if st.button("Buscar CVEs na NVD", key="search_exploit_button"): # Alterado o texto do botão
+        if not st.session_state.exploit_software_name:
+            st.error("Por favor, digite o nome do software/serviço para buscar.")
+            st.session_state.nvd_search_results = []
+        else:
+            st.session_state.nvd_search_results = []
+            st.session_state.exploit_analysis_result = ""
+            st.session_state.exploit_summary = None
+
+            # --- 1. Consulta à API da NVD ---
+            with st.spinner(f"Consultando NVD para {st.session_state.exploit_software_name} {version_text}..."):
+                base_nvd_url = "[https://services.nvd.nist.gov/rest/json/cves/2.0](https://services.nvd.nist.gov/rest/json/cves/2.0)"
+                
+                params = {}
+                search_term = st.session_state.exploit_software_name
+                if st.session_state.exploit_software_version:
+                    params["keywordSearch"] = f"{st.session_state.exploit_software_name} {st.session_state.exploit_software_version}"
+                else:
+                    params["keywordSearch"] = st.session_state.exploit_software_name
+                
+                params["resultsPerPage"] = 10 
+                
+                try:
+                    headers = {}
+                    if NVD_API_KEY: # Verifica se a chave existe antes de adicionar
+                        headers["apiKey"] = NVD_API_KEY # A NVD usa o cabeçalho 'apiKey'
+                        st.info("Usando NVD API Key para a consulta.") # Opcional: para feedback
+
+                    response = requests.get(base_nvd_url, params=params, headers=headers, timeout=15)
+                    response.raise_for_status() # Lança um erro para status HTTP ruins (4xx ou 5xx)
+                    nvd_data = response.json()
+                    if nvd_data and 'vulnerabilities' in nvd_data:
+                        st.session_state.nvd_search_results = nvd_data['vulnerabilities']
+                        if st.session_state.nvd_search_results:
+                            st.success(f"Encontradas {len(st.session_state.nvd_search_results)} vulnerabilidades na NVD.")
+                        else:
+                            st.info(f"Nenhuma vulnerabilidade específica encontrada na NVD para '{search_term}'. O LLM tentará fornecer informações gerais.")
+                    else:
+                        st.info(f"Nenhum resultado de vulnerabilidade retornado pela NVD para '{search_term}'. O LLM tentará fornecer informações gerais.")
+
+                except requests.exceptions.RequestException as e:
+                    # Mensagem de erro mais focada na conexão
+                    st.error(f"Erro ao consultar a API da NVD: {e}. Verifique sua conexão com a internet ou possíveis proxies/firewalls. O LLM tentará fornecer informações gerais com base em seu conhecimento.")
+                    st.session_state.nvd_search_results = []
+                except json.JSONDecodeError:
+                    st.error(f"Erro ao decodificar a resposta JSON da NVD. Pode ser um problema temporário da API. O LLM tentará fornecer informações gerais com base em seu conhecimento.")
+                    st.session_state.nvd_search_results = []
+
+            # --- 2. Alimentar o LLM com os resultados da NVD ---
+            full_llm_context = ""
+            if st.session_state.nvd_search_results:
+                nvd_results_for_llm = []
+                for vuln in st.session_state.nvd_search_results:
+                    cve_id = vuln['cve']['id']
+                    description = "N/A"
+                    if 'descriptions' in vuln['cve'] and vuln['cve']['descriptions']:
+                        for desc_entry in vuln['cve']['descriptions']: # Renomeado para evitar conflito
+                            if desc_entry['lang'] == 'en': # Preferir descrição em inglês
+                                description = desc_entry['value']
+                                break
+                    severity = "Não especificado"
+                    # Tenta obter a severidade CVSSv3.1 primeiro, depois v2.0
+                    if 'metrics' in vuln['cve']:
+                        if 'cvssMetricV31' in vuln['cve']['metrics'] and vuln['cve']['metrics']['cvssMetricV31']:
+                            for metric in vuln['cve']['metrics']['cvssMetricV31']:
+                                if 'cvssData' in metric and 'baseSeverity' in metric['cvssData']:
+                                    severity = metric['cvssData']['baseSeverity'] + " (CVSS v3.1)"
+                                    break
+                        elif 'cvssMetricV2' in vuln['cve']['metrics'] and vuln['cve']['metrics']['cvssMetricV2']:
+                            for metric in vuln['cve']['metrics']['cvssMetricV2']:
+                                if 'cvssData' in metric and 'baseSeverity' in metric['cvssData']:
+                                    severity = metric['cvssData']['baseSeverity'] + " (CVSS v2.0)"
+                                    break
+
+                    nvd_results_for_llm.append(f"CVE ID: {cve_id}\nDescrição: {description}\nSeveridade NVD: {severity}\n")
+                
+                full_llm_context = "\n".join(nvd_results_for_llm) + "\n\n"
+                llm_instruction_prefix = f"A NVD retornou as seguintes vulnerabilidades para '{st.session_state.exploit_software_name}' {version_text}:\n\n```\n{full_llm_context}\n```\n\nCom base nessas informações da NVD e em seu conhecimento de segurança, para cada CVE, detalhe a vulnerabilidade e forneça informações sobre possíveis PoCs e ferramentas. Foque em:\n"
+            else:
+                llm_instruction_prefix = f"Não foram encontrados resultados específicos na NVD para '{st.session_state.exploit_software_name}' {version_text}. Com base em seu conhecimento geral sobre este software/serviço, forneça informações sobre vulnerabilidades comuns, técnicas de exploração e ferramentas relevantes. Foque em:\n"
+
+            
+            exploit_prompt = (
+                f"Você é um especialista em segurança de sistemas e pentest, com amplo conhecimento em bancos de dados de vulnerabilidades como Exploit-DB, NVD e metasploit. Sua tarefa é analisar as informações fornecidas e gerar um relatório detalhado de vulnerabilidades.\n"
+                f"{llm_instruction_prefix}"
+                f"\n**RESUMO:** Forneça um resumo quantitativo na PRIMEIRA LINHA da sua resposta, no formato exato: `Total de Vulnerabilidades: X | Críticas: Y | Altas: Z | Médias: W | Baixas: V` (substitua X,Y,Z,W,V pelos números correspondentes). Se não houver vulnerabilidades, use 0.\n\n"
+                f"Para cada vulnerabilidade/exploit relevante, apresente de forma concisa e prática, utilizando formato Markdown:\n\n"
+                f"## [Nome do Exploit/Vulnerabilidade] (Ex: Apache Struts2 Remote Code Execution)\n"
+                f"**CVE ID:** [ID da CVE, Ex: CVE-2023-12345] / **Severidade NVD:** [Severidade da NVD, se disponível]\n" # Foco na NVD
+                f"**Software/Serviço Afetado:** {st.session_state.exploit_software_name} {version_text}\n"
+                f"**Tipo:** [Ex: RCE, LFI, Escalation de Privilégios, DoS, SQLi, etc.]\n"
+                f"**Severidade Avaliada:** [Crítica/Alta/Média/Baixa - Avalie a severidade geral com base nas informações da NVD e seu conhecimento de pentest]\n"
+                f"**Descrição da CVE:** Explique a vulnerabilidade e seu impacto, sintetizando a informação da NVD. Mencione as condições específicas para exploração.\n"
+                f"**PoC (Prova de Conceito) / Método de Exploração:** Forneça um exemplo prático de como esta vulnerabilidade *poderia ser explorada*. Inclua comandos de terminal, trechos de código (Python, Ruby, C, etc.), payloads ou requisições HTTP (`curl`). Adapte o PoC para o software/serviço especificado. **Encapsule o código/comando em um bloco de código Markdown (` ``` ` com a linguagem apropriada).**\n"
+                f"**Ferramentas Sugeridas:** Liste ferramentas (Ex: Metasploit, Nmap Scripting Engine (NSE), Nessus, OpenVAS, custom scripts Python/Perl/Ruby) que podem ser usadas para detectar ou explorar a vulnerabilidade.\n"
+                f"**Mitigação/Solução:** Ações recomendadas para corrigir ou mitigar a vulnerabilidade.\n\n"
+                f"Se, mesmo após a consulta, não houver exploits ou CVEs diretos, ou se o modelo não tiver conhecimento específico, indique isso claramente e sugira métodos genéricos de pentest para esse tipo de software/serviço ou explique que o conhecimento é limitado à sua data de treinamento para detalhes não contidos nas fontes fornecidas.\n"
+                f"Seu objetivo é fornecer informações acionáveis para um pentester."
+            )
+
+            exploit_analysis_raw = obter_resposta_llm(llm_model_text, [exploit_prompt])
+            
+            if exploit_analysis_raw:
+                st.session_state.exploit_summary, st.session_state.exploit_analysis_result = parse_vulnerability_summary(exploit_analysis_raw)
+            else:
+                st.session_state.exploit_analysis_result = "Não foi possível obter uma resposta do Gemini. Tente novamente."
+                st.session_state.exploit_summary = None
+
+    if st.session_state.exploit_analysis_result:
+        st.subheader("Resultados da Busca de Exploit/CVEs")
+        if st.session_state.exploit_summary:
+            st.markdown("#### Resumo das Vulnerabilidades Identificadas:")
+            cols = st.columns(5)
+            cols[0].metric("Total", st.session_state.exploit_summary["Total"])
+            cols[1].metric("Críticas", st.session_state.exploit_summary["Críticas"])
+            cols[2].metric("Altas", st.session_state.exploit_summary["Altas"])
+            cols[3].metric("Médias", st.session_state.exploit_summary["Médias"])
+            cols[4].metric("Baixas", st.session_state.exploit_summary["Baixas"])
+            st.markdown("---")
+        st.markdown(st.session_state.exploit_analysis_result)
+
+
+# --- Novo Módulo: Acunetix Scanner Insights ---
+
+def acunetix_insights_page(llm_model_vision, llm_model_text):
+    st.header("Acunetix Scanner Insights 🕷️")
+    st.markdown("""
+        Cole o output de um scan do Acunetix (preferencialmente em formato JSON ou XML para melhor precisão)
+        ou forneça o ID de um scan existente (se o Acunetix for acessível via API).
+        O SentinelAI irá analisar as vulnerabilidades encontradas pelo Acunetix, fornecer insights,
+        mapear para OWASP (se aplicável), e sugerir PoCs ou próximas etapas para validação manual.
+    """)
+
+    if not ACUNETIX_API_KEY or not ACUNETIX_URL:
+        st.warning("⚠️ **Configuração Faltando:** Para usar a integração direta com a API do Acunetix, configure `ACUNETIX_API_KEY` e `ACUNETIX_URL` no seu arquivo `.env`.")
+        st.info("Você pode obter sua API Key do Acunetix em 'Profile > API Key' e a URL é a base da sua instalação Acunetix (ex: `https://myacunetix.com`).")
+
+    # Inicializa ou reseta o estado
+    if 'acunetix_input_type' not in st.session_state:
+        st.session_state.acunetix_input_type = "paste_output"
+    if 'acunetix_pasted_output' not in st.session_state:
+        st.session_state.acunetix_pasted_output = ""
+    if 'acunetix_scan_id' not in st.session_state:
+        st.session_state.acunetix_scan_id = ""
+    if 'acunetix_analysis_result' not in st.session_state:
+        st.session_state.acunetix_analysis_result = ""
+    if 'acunetix_summary' not in st.session_state:
+        st.session_state.acunetix_summary = None
+    if 'acunetix_fetch_error' not in st.session_state:
+        st.session_state.acunetix_fetch_error = False
+
+    def reset_acunetix_analysis():
+        st.session_state.acunetix_input_type = "paste_output"
+        st.session_state.acunetix_pasted_output = ""
+        st.session_state.acunetix_scan_id = ""
+        st.session_state.acunetix_analysis_result = ""
+        st.session_state.acunetix_summary = None
+        st.session_state.acunetix_fetch_error = False
+        st.rerun()
+
+    if st.button("Limpar Análise Acunetix", key="reset_acunetix_analysis_button"):
+        reset_acunetix_analysis()
+
+    # Seleção do tipo de entrada
+    input_type = st.radio(
+        "Como você deseja fornecer os dados do Acunetix?",
+        ["Colar Output do Scan", "Buscar Scan por ID (via API Acunetix)"],
+        key="acunetix_input_type_radio",
+        index=0 if st.session_state.acunetix_input_type == "paste_output" else 1
+    )
+    st.session_state.acunetix_input_type = "paste_output" if input_type == "Colar Output do Scan" else "fetch_by_id"
+
+    scan_data_to_analyze = ""
+    
+    if st.session_state.acunetix_input_type == "paste_output":
+        pasted_output = st.text_area(
+            "Cole o output completo do scan do Acunetix (JSON ou XML):",
+            value=st.session_state.acunetix_pasted_output,
+            height=400,
+            placeholder="Ex: <scan-results>...</scan-results> ou { 'vulnerabilities': [...] }",
+            key="acunetix_pasted_output_area"
+        )
+        st.session_state.acunetix_pasted_output = pasted_output.strip()
+        scan_data_to_analyze = st.session_state.acunetix_pasted_output
+
+    elif st.session_state.acunetix_input_type == "fetch_by_id":
+        scan_id = st.text_input(
+            "ID do Scan no Acunetix:",
+            value=st.session_state.acunetix_scan_id,
+            placeholder="Ex: 123e4567-e89b-12d3-a456-426614174000",
+            key="acunetix_scan_id_input"
+        )
+        st.session_state.acunetix_scan_id = scan_id.strip()
+
+        if st.button("Buscar Scan na API Acunetix", key="fetch_acunetix_scan_button"):
+            if not ACUNETIX_API_KEY or not ACUNETIX_URL:
+                st.error("Por favor, configure `ACUNETIX_API_KEY` e `ACUNETIX_URL` no seu arquivo `.env` para usar esta funcionalidade.")
+                st.session_state.acunetix_fetch_error = True
+            elif not st.session_state.acunetix_scan_id:
+                st.error("Por favor, digite o ID do Scan.")
+                st.session_state.acunetix_fetch_error = True
+            else:
+                with st.spinner(f"Buscando detalhes do scan ID {st.session_state.acunetix_scan_id} na API do Acunetix..."):
+                    # A API do Acunetix para resultados de scan é tipicamente assim:
+                    # GET /api/v1/scans/{scan_id}/vulnerabilities ou /api/v1/scans/{scan_id}/results
+                    # A URL exata e os cabeçalhos podem variar ligeiramente com a versão do Acunetix.
+                    
+                    api_endpoint = f"{ACUNETIX_URL.rstrip('/')}/api/v1/scans/{st.session_state.acunetix_scan_id}/results" # Exemplo de endpoint
+                    headers = {
+                        "X-Auth": ACUNETIX_API_KEY,
+                        "Content-Type": "application/json"
+                    }
+                    
+                    try:
+                        response = requests.get(api_endpoint, headers=headers, timeout=30)
+                        response.raise_for_status() # Lança um erro para status HTTP ruins
+                        scan_data_from_api = response.json()
+                        st.session_state.acunetix_pasted_output = json.dumps(scan_data_from_api, indent=2) # Armazena para visualização
+                        st.success(f"Dados do scan {st.session_state.acunetix_scan_id} obtidos da API.")
+                        st.session_state.acunetix_fetch_error = False
+                    except requests.exceptions.RequestException as e:
+                        st.error(f"Erro ao buscar scan na API do Acunetix: {e}. Verifique a URL, API Key e ID do Scan.")
+                        st.session_state.acunetix_fetch_error = True
+                        st.session_state.acunetix_pasted_output = "" # Limpa qualquer dado anterior
+                    except json.JSONDecodeError:
+                        st.error("Erro ao decodificar a resposta JSON da API do Acunetix.")
+                        st.session_state.acunetix_fetch_error = True
+                        st.session_state.acunetix_pasted_output = ""
+        
+        if st.session_state.acunetix_pasted_output:
+            st.subheader("Output do Scan do Acunetix (Obtido via API):")
+            st.code(st.session_state.acunetix_pasted_output, language="json") # Supondo JSON
+
+        scan_data_to_analyze = st.session_state.acunetix_pasted_output # Usa o output recuperado para análise
+
+    if st.button("Analisar Output do Acunetix com LLM", key="analyze_acunetix_button"):
+        if not scan_data_to_analyze:
+            st.error("Por favor, cole o output do scan ou busque um scan via ID primeiro.")
+        else:
+            with st.spinner("Analisando vulnerabilidades do Acunetix com LLM..."):
+                # Tenta parsear o input para JSON ou XML
+                parsed_scan_data = None
+                input_format = "texto"
+                try:
+                    parsed_scan_data = json.loads(scan_data_to_analyze)
+                    input_format = "JSON"
+                except json.JSONDecodeError:
+                    try:
+                        # Para XML, pode ser necessário um parser mais robusto como ElementTree
+                        # Aqui, apenas verificamos se parece XML para informar ao LLM
+                        if scan_data_to_analyze.strip().startswith('<'):
+                            input_format = "XML"
+                    except Exception:
+                        pass # Continua como texto se não for nem JSON nem XML aparente
+
+                prompt_acunetix = (
+                    f"Você é um especialista em segurança da informação e pentest, com experiência na análise de relatórios de scanners de vulnerabilidade como o Acunetix. Sua tarefa é analisar o output de um scan do Acunetix fornecido (em formato {input_format}) e extrair as vulnerabilidades mais importantes, fornecendo insights práticos para um pentester.\n"
+                    f"\n**Output do Scan do Acunetix ({input_format}):**\n```\n{scan_data_to_analyze}\n```\n\n"
+                    f"**RESUMO:** Forneça um resumo quantitativo na PRIMEIRA LINHA da sua resposta, no formato exato: `Total de Vulnerabilidades: X | Críticas: Y | Altas: Z | Médias: W | Baixas: V` (substitua X,Y,Z,W,V pelos números correspondentes). Se não houver vulnerabilidades, use 0.\n\n"
+                    f"Para cada **vulnerabilidade importante** identificada pelo Acunetix, forneça os seguintes detalhes de forma concisa e prática, utilizando formato Markdown:\n\n"
+                    f"## [Nome da Vulnerabilidade] (Ex: SQL Injection, Cross-Site Scripting)\n"
+                    f"**Severidade Acunetix:** [Severidade reportada pelo Acunetix, ex: High, Medium]\n"
+                    f"**Localização/URL:** https://www.reddit.com/r/AfterEffects/comments/3taw58/cant_export_project/\n"
+                    f"**Categoria OWASP (2021) / CWE (se aplicável):** [Mapeie para a categoria OWASP Top 10 mais relevante, ex: A03: Injection. Se houver CWE no output, inclua também.]\n"
+                    f"**Descrição e Implicações:** Explique brevemente a vulnerabilidade, como ela foi detectada pelo Acunetix (se o output detalhar) e qual o impacto potencial.\n"
+                    f"**PoC (Prova de Conceito) / Como Reproduzir:** Com base nas informações do scan e em seu conhecimento, descreva os passos para reproduzir manualmente a vulnerabilidade. Se o Acunetix fornecer o PoC, explique-o de forma clara e forneça um exemplo adaptado. **Encapsule exemplos de payloads/requisições em blocos de código Markdown (` ``` ` com a linguagem apropriada).**\n"
+                    f"**Ferramentas Sugeridas para Validação Manual:** Liste ferramentas (Ex: Burp Suite, OWASP ZAP, Postman, curl, ferramentas específicas para a vulnerabilidade) que um pentester usaria para validar ou explorar mais a fundo essa vulnerabilidade.\n"
+                    f"**Recomendação/Mitigação:** Ações concretas e específicas para corrigir a vulnerabilidade.\n\n"
+                    f"Se o output não contiver vulnerabilidades, ou se for muito genérico, indique isso claramente. Priorize as vulnerabilidades de maior severidade.\n"
+                    f"Seu objetivo é transformar o relatório do Acunetix em insights acionáveis para um pentester."
+                )
+
+                acunetix_analysis_raw = obter_resposta_llm(llm_model_text, [prompt_acunetix])
+                
+                if acunetix_analysis_raw:
+                    st.session_state.acunetix_summary, st.session_state.acunetix_analysis_result = parse_vulnerability_summary(acunetix_analysis_raw)
+                else:
+                    st.session_state.acunetix_analysis_result = "Não foi possível analisar o output do Acunetix. Tente novamente ou forneça um formato mais claro."
+                    st.session_state.acunetix_summary = None
+
+    if st.session_state.acunetix_analysis_result:
+        st.subheader("Resultados da Análise do Acunetix")
+        if st.session_state.acunetix_summary:
+            st.markdown("#### Resumo das Vulnerabilidades Identificadas:")
+            cols = st.columns(5)
+            cols[0].metric("Total", st.session_state.acunetix_summary["Total"])
+            cols[1].metric("Críticas", st.session_state.acunetix_summary["Críticas"])
+            cols[2].metric("Altas", st.session_state.acunetix_summary["Altas"])
+            cols[3].metric("Médias", st.session_state.acunetix_summary["Médias"])
+            cols[4].metric("Baixas", st.session_state.acunetix_summary["Baixas"])
+            st.markdown("---")
+        st.markdown(st.session_state.acunetix_analysis_result)
 
 # --- Lógica Principal do Aplicativo ---
 
@@ -1164,13 +1656,26 @@ if 'llm_models_initialized' not in st.session_state:
     # Variáveis para Swagger/OpenAPI Analyzer
     st.session_state.swagger_input_content = ""
     st.session_state.swagger_analysis_result = [] # Agora armazena uma LISTA de objetos (dicionários)
-    st.session_state.swagger_analysis_result_display = [] # Resultado processado para display
+    st.session_state.swagger_analysis_result_display = "" # Resultado processado para display
     st.session_state.swagger_context_input = ""
     st.session_state.swagger_summary = None
     # Variáveis para Static Code Analyzer (Basic)
     st.session_state.code_input_content = ""
     st.session_state.code_analysis_result = ""
     st.session_state.code_language_selected = "Python" # Default
+    # Variáveis para Search Exploit (NVD APENAS)
+    st.session_state.exploit_software_name = ""
+    st.session_state.exploit_software_version = ""
+    st.session_state.exploit_analysis_result = ""
+    st.session_state.exploit_summary = None
+    st.session_state.nvd_search_results = []
+    # Variáveis para Acunetix Scanner Insights (NOVO)
+    st.session_state.acunetix_input_type = "paste_output"
+    st.session_state.acunetix_pasted_output = ""
+    st.session_state.acunetix_scan_id = ""
+    st.session_state.acunetix_analysis_result = ""
+    st.session_state.acunetix_summary = None
+    st.session_state.acunetix_fetch_error = False
 
 
     # Inicializa os modelos LLM apenas uma vez
@@ -1184,7 +1689,7 @@ else:
 # Define as opções de menu na barra lateral
 selected_page = st.sidebar.radio(
     "Navegação",
-    ["Início", "OWASP Vulnerability Details", "Análise de Requisições HTTP", "OWASP Image Analyzer", "Modelagem de Ameaças (STRIDE)", "Pentest Lab", "PoC Generator (HTML)", "OpenAPI Analyzer", "Static Code Analyzer"],
+    ["Início", "OWASP Vulnerability Details", "Análise de Requisições HTTP", "OWASP Image Analyzer", "Modelagem de Ameaças (STRIDE)", "Pentest Lab", "PoC Generator (HTML)", "OpenAPI Analyzer", "Static Code Analyzer", "Search Exploit (NVD)", "Acunetix Scanner Insights"], # Adicionada nova página
     index=0 # Página inicial padrão "Início"
 )
 
@@ -1207,3 +1712,7 @@ elif selected_page == "OpenAPI Analyzer":
     swagger_openapi_analyzer_page(llm_model_vision, llm_model_text)
 elif selected_page == "Static Code Analyzer":
     static_code_analyzer_page(llm_model_vision, llm_model_text)
+elif selected_page == "Search Exploit (NVD)":
+    search_exploit_page(llm_model_vision, llm_model_text)
+elif selected_page == "Acunetix Scanner Insights": # Nova página adicionada
+    acunetix_insights_page(llm_model_vision, llm_model_text)
